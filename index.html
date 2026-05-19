@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LLM batch caller</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --text: #1f2933;
+      --muted: #667085;
+      --border: #d9dee7;
+      --accent: #2563eb;
+      --accent-dark: #1d4ed8;
+      --error-bg: #fff1f2;
+      --error-border: #fecdd3;
+      --success-bg: #ecfdf3;
+      --success-border: #bbf7d0;
+      --shadow: 0 12px 32px rgba(31, 41, 55, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.5;
+    }
+
+    main {
+      width: min(100% - 32px, 720px);
+      margin: 0 auto;
+      padding: 48px 0;
+    }
+
+    h1 {
+      margin: 0 0 24px;
+      font-size: 2.25rem;
+      line-height: 1.1;
+      letter-spacing: 0;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      padding: 28px;
+    }
+
+    .field {
+      display: grid;
+      gap: 8px;
+      margin-bottom: 22px;
+    }
+
+    label {
+      font-weight: 700;
+    }
+
+    textarea,
+    input[type="text"],
+    input[type="password"],
+    input[type="file"] {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font: inherit;
+      background: #fff;
+    }
+
+    textarea,
+    input[type="text"],
+    input[type="password"] {
+      padding: 11px 12px;
+    }
+
+    textarea {
+      min-height: 140px;
+      resize: vertical;
+    }
+
+    input[type="file"] {
+      padding: 10px;
+    }
+
+    textarea:focus,
+    input[type="text"]:focus,
+    input[type="password"]:focus,
+    input[type="file"]:focus {
+      outline: 3px solid rgba(37, 99, 235, 0.18);
+      border-color: var(--accent);
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      margin-top: 4px;
+    }
+
+    button {
+      border: 0;
+      border-radius: 6px;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 700;
+      padding: 11px 18px;
+    }
+
+    button:hover:not(:disabled) {
+      background: var(--accent-dark);
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.58;
+    }
+
+    #downloadButton {
+      display: none;
+      background: #087f5b;
+    }
+
+    #downloadButton:hover {
+      background: #06664a;
+    }
+
+    .status,
+    .results {
+      margin-top: 26px;
+    }
+
+    .status-box {
+      min-height: 48px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fbfcfe;
+      color: var(--muted);
+      padding: 14px;
+      white-space: pre-wrap;
+    }
+
+    .result-list {
+      display: grid;
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .result-item {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+      padding: 14px;
+    }
+
+    .result-item.error {
+      border-color: var(--error-border);
+      background: var(--error-bg);
+    }
+
+    .result-item.success {
+      border-color: var(--success-border);
+      background: var(--success-bg);
+    }
+
+    .row-label {
+      color: var(--muted);
+      font-size: 0.86rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+    }
+
+    .prompt,
+    .response {
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+    }
+
+    .prompt {
+      margin-bottom: 12px;
+    }
+
+    .response {
+      border-top: 1px solid rgba(102, 112, 133, 0.22);
+      padding-top: 12px;
+    }
+
+    @media (max-width: 560px) {
+      main {
+        width: min(100% - 24px, 720px);
+        padding: 28px 0;
+      }
+
+      .panel {
+        padding: 20px;
+      }
+
+      h1 {
+        font-size: 1.85rem;
+      }
+
+      button {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>LLM batch caller</h1>
+
+    <section class="panel" aria-label="Batch caller form">
+      <div class="field">
+        <label for="systemPrompt">System prompt</label>
+        <textarea id="systemPrompt" placeholder="Paste the system prompt here..."></textarea>
+      </div>
+
+      <div class="field">
+        <label for="promptFile">Prompt file</label>
+        <input id="promptFile" type="file" accept=".txt,.csv,.jpg,.jpeg,.png,text/plain,text/csv,image/jpeg,image/png">
+      </div>
+
+      <div class="field">
+        <label for="apiUrl">API URL</label>
+        <input id="apiUrl" type="text" value="http://localhost:1234/v1/chat/completions">
+      </div>
+
+      <div class="field">
+        <label for="apiKey">API Key</label>
+        <input id="apiKey" type="password">
+      </div>
+
+      <div class="field">
+        <label for="modelName">Model name</label>
+        <input id="modelName" type="text" value="qwen3.5-0.8b" placeholder="qwen3.5-0.8b (LM Studio), gemini-2.5-flash (Google AI Studio), meta-llama/llama-3.3-70b-instruct:free (OpenRouter)">
+      </div>
+
+      <div class="actions">
+        <button id="runButton" type="button">Run</button>
+        <button id="downloadButton" type="button">Download CSV</button>
+      </div>
+
+      <section class="status" aria-live="polite">
+        <label for="statusArea">Status</label>
+        <div id="statusArea" class="status-box">Choose a file, add a system prompt, then run the batch.</div>
+      </section>
+
+      <section class="results">
+        <label>Results</label>
+        <div id="resultsArea" class="result-list"></div>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    const baseUrl = "http://localhost:1234/v1";
+    const modelsEndpoint = `${baseUrl}/models`;
+    const runButton = document.getElementById("runButton");
+    const downloadButton = document.getElementById("downloadButton");
+    const systemPromptInput = document.getElementById("systemPrompt");
+    const promptFileInput = document.getElementById("promptFile");
+    const apiUrlInput = document.getElementById("apiUrl");
+    const apiKeyInput = document.getElementById("apiKey");
+    const modelNameInput = document.getElementById("modelName");
+    const statusArea = document.getElementById("statusArea");
+    const resultsArea = document.getElementById("resultsArea");
+    const textModelPlaceholder = "qwen3.5-0.8b (LM Studio), gemini-2.5-flash (Google AI Studio), meta-llama/llama-3.3-70b-instruct:free (OpenRouter)";
+    const imageModelPlaceholder = "qwen2.5-vl-7b (LM Studio), qwen/qwen2.5-vl-72b-instruct:free (OpenRouter)";
+
+    let results = [];
+
+    runButton.addEventListener("click", runBatch);
+    downloadButton.addEventListener("click", downloadCsv);
+    promptFileInput.addEventListener("change", updateModelPlaceholder);
+    detectLoadedModel();
+
+    async function runBatch() {
+      const file = promptFileInput.files[0];
+      const apiUrl = apiUrlInput.value.trim();
+      const apiKey = apiKeyInput.value.trim();
+      const modelName = modelNameInput.value.trim();
+
+      if (!file) {
+        setStatus("Please choose a .txt or .csv file first.");
+        return;
+      }
+
+      if (!modelName) {
+        setStatus("Please enter a model name.");
+        return;
+      }
+
+      if (!apiUrl) {
+        setStatus("Please enter an API URL.");
+        return;
+      }
+
+      runButton.disabled = true;
+      downloadButton.style.display = "none";
+      results = [];
+      resultsArea.innerHTML = "";
+
+      try {
+        if (isImageFile(file)) {
+          await runImageRequest({ file, apiUrl, apiKey, modelName });
+          return;
+        }
+
+        const text = await readFile(file);
+        const prompts = text
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter((line) => line.length > 0);
+
+        if (prompts.length === 0) {
+          setStatus("The selected file did not contain any non-empty lines.");
+          return;
+        }
+
+        for (let index = 0; index < prompts.length; index += 1) {
+          const rowNumber = index + 1;
+          const input = prompts[index];
+          setStatus(`Processing row ${rowNumber} of ${prompts.length}...`);
+
+          const response = await callLmStudio({
+            apiUrl,
+            apiKey,
+            modelName,
+            messages: [
+              { role: "system", content: systemPromptInput.value },
+              { role: "user", content: input }
+            ]
+          });
+
+          results.push({
+            row_number: rowNumber,
+            input,
+            response: response.text,
+            failed: response.failed
+          });
+
+          renderResults();
+          setStatus(`Processed row ${rowNumber} of ${prompts.length}.`);
+        }
+
+        setStatus(`Finished ${prompts.length} row${prompts.length === 1 ? "" : "s"}.`);
+        downloadButton.style.display = "inline-block";
+      } catch (error) {
+        setStatus(`Could not read the file: ${getErrorMessage(error)}`);
+      } finally {
+        runButton.disabled = false;
+      }
+    }
+
+    async function runImageRequest({ file, apiUrl, apiKey, modelName }) {
+      setStatus("Reading image...");
+      const dataUrl = await readFileAsDataUrl(file);
+      const imagePrompt = systemPromptInput.value.trim() || "Transcribe this image as accurately as you can.";
+
+      setStatus("Processing image...");
+      const response = await callLmStudio({
+        apiUrl,
+        apiKey,
+        modelName,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: imagePrompt },
+              { type: "image_url", image_url: { url: dataUrl } }
+            ]
+          }
+        ]
+      });
+
+      results.push({
+        row_number: 1,
+        input: file.name,
+        response: response.text,
+        failed: response.failed
+      });
+
+      renderResults();
+      setStatus("Finished image.");
+      downloadButton.style.display = "inline-block";
+    }
+
+    function readFile(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(reader.error || new Error("Unknown file read error"));
+        reader.readAsText(file);
+      });
+    }
+
+    function readFileAsDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(reader.error || new Error("Unknown image read error"));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function callLmStudio({ apiUrl, apiKey, modelName, messages }) {
+      try {
+        const headers = {
+          "Content-Type": "application/json"
+        };
+
+        if (apiKey) {
+          headers.Authorization = `Bearer ${apiKey}`;
+        }
+
+        const response = await fetch(apiUrl, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            model: modelName,
+            messages
+          })
+        });
+
+        const text = await response.text();
+        let data;
+
+        try {
+          data = text ? JSON.parse(text) : {};
+        } catch {
+          throw new Error(`HTTP ${response.status}: ${text || "Invalid JSON response"}`);
+        }
+
+        if (!response.ok) {
+          const message = data.error && data.error.message ? data.error.message : text;
+          throw new Error(`HTTP ${response.status}: ${message || response.statusText}`);
+        }
+
+        const content = data.choices &&
+          data.choices[0] &&
+          data.choices[0].message &&
+          typeof data.choices[0].message.content === "string"
+          ? data.choices[0].message.content
+          : "";
+
+        return { text: content, failed: false };
+      } catch (error) {
+        return { text: getErrorMessage(error), failed: true };
+      }
+    }
+
+    function updateModelPlaceholder() {
+      const file = promptFileInput.files[0];
+      modelNameInput.placeholder = file && isImageFile(file)
+        ? imageModelPlaceholder
+        : textModelPlaceholder;
+    }
+
+    function isImageFile(file) {
+      const name = file.name.toLowerCase();
+      return file.type.startsWith("image/") ||
+        name.endsWith(".jpg") ||
+        name.endsWith(".jpeg") ||
+        name.endsWith(".png");
+    }
+
+    async function detectLoadedModel() {
+      try {
+        const response = await fetch(modelsEndpoint);
+        if (!response.ok) {
+          return;
+        }
+
+        const data = await response.json();
+        const modelIds = Array.isArray(data.data)
+          ? data.data.map((model) => model && model.id).filter(Boolean)
+          : [];
+        const chatModel = modelIds.find((id) => !id.toLowerCase().includes("embedding"));
+
+        if (chatModel && modelNameInput.value.trim() === "qwen3.5-0.8b") {
+          modelNameInput.value = chatModel;
+          modelNameInput.setAttribute("value", chatModel);
+          setStatus(`Detected loaded model: ${chatModel}`);
+        }
+      } catch {
+        // LM Studio may not be running yet. The user can still enter a model manually.
+      }
+    }
+
+    function renderResults() {
+      const fragment = document.createDocumentFragment();
+
+      for (const result of results) {
+        const item = document.createElement("article");
+        item.className = `result-item ${result.failed ? "error" : "success"}`;
+
+        const label = document.createElement("div");
+        label.className = "row-label";
+        label.textContent = `Row ${result.row_number}`;
+
+        const prompt = document.createElement("div");
+        prompt.className = "prompt";
+        prompt.textContent = result.input;
+
+        const response = document.createElement("div");
+        response.className = "response";
+        response.textContent = result.response;
+
+        item.append(label, prompt, response);
+        fragment.appendChild(item);
+      }
+
+      resultsArea.replaceChildren(fragment);
+    }
+
+    function downloadCsv() {
+      const header = ["row_number", "input", "response"];
+      const rows = results.map((result) => [
+        result.row_number,
+        result.input,
+        result.response
+      ]);
+
+      const csv = [header, ...rows]
+        .map((row) => row.map(escapeCsvField).join(","))
+        .join("\r\n");
+
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "results.csv";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    function escapeCsvField(value) {
+      const field = String(value == null ? "" : value);
+      if (/[",\r\n]/.test(field)) {
+        return `"${field.replace(/"/g, '""')}"`;
+      }
+      return field;
+    }
+
+    function setStatus(message) {
+      statusArea.textContent = message;
+    }
+
+    function getErrorMessage(error) {
+      return error && error.message ? error.message : String(error);
+    }
+  </script>
+</body>
+</html>
